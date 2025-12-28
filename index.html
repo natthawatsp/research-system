@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบจัดการงานวิจัยนักศึกษา</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600&display=swap');
+        body { font-family: 'Sarabun', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="app">
+        <nav class="bg-white shadow-lg sticky top-0 z-50">
+            <div class="max-w-7xl mx-auto px-4">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center">
+                        <span class="font-bold text-xl text-indigo-600">ResearchSystem</span>
+                        <a href="#" @click="currentPage='home'" class="ml-4 text-gray-600 hover:text-indigo-600">หน้าแรก</a>
+                        <a href="#" v-for="menu in menus" :key="menu.id" class="ml-4 text-gray-600 hover:text-indigo-600">{{ menu.name }}</a>
+                    </div>
+                    <div class="flex items-center">
+                        <div v-if="user">
+                            <span class="mr-4 text-sm text-gray-600">{{ user.email }}</span>
+                            <button @click="currentPage='add-research'" class="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 mr-2">เพิ่มงานวิจัย</button>
+                            <button @click="logout" class="text-red-500 hover:text-red-700">ออกจากระบบ</button>
+                        </div>
+                        <div v-else>
+                            <button @click="currentPage='login'" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">เข้าสู่ระบบ / สมัครสมาชิก</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+            
+            <div v-if="currentPage === 'home'">
+                <div class="w-full h-64 bg-gray-300 rounded-lg overflow-hidden mb-8 relative shadow-md">
+                    <img :src="bannerUrl" class="w-full h-full object-cover" alt="Banner">
+                    <div class="absolute bottom-0 left-0 bg-black bg-opacity-50 text-white p-4 w-full">
+                        <h2 class="text-2xl font-bold">ยินดีต้อนรับสู่ระบบจัดการงานวิจัย</h2>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="md:col-span-2 bg-white p-6 rounded-lg shadow border-l-4 border-indigo-500">
+                        <h3 class="text-xl font-bold mb-4 text-indigo-700">ข่าวสารประชาสัมพันธ์</h3>
+                        <ul class="space-y-3">
+                            <li v-for="item in newsList" :key="item.id" class="border-b pb-2">
+                                <span class="font-bold text-gray-800 cursor-pointer hover:text-indigo-600" @click="viewNews(item)">{{ item.title }}</span>
+                                <p class="text-sm text-gray-500 truncate">{{ item.content }}</p>
+                            </li>
+                        </ul>
+                        <div v-if="isAdmin" class="mt-4">
+                            <input v-model="newNewsTitle" placeholder="หัวข้อข่าว" class="border p-1 w-full mb-1">
+                            <textarea v-model="newNewsContent" placeholder="เนื้อหา" class="border p-1 w-full mb-1"></textarea>
+                            <button @click="postNews" class="bg-blue-500 text-white px-3 py-1 rounded text-sm">โพสต์ข่าว (Admin)</button>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-6 rounded-lg shadow">
+                        <h3 class="text-xl font-bold mb-4 text-gray-700">สถิติงานวิจัย</h3>
+                        <canvas id="researchChart"></canvas>
+                        <div class="mt-4 flex justify-center space-x-2">
+                             <button @click="renderChart('major')" class="text-xs bg-gray-200 px-2 py-1 rounded">แยกตามสาขา</button>
+                             <button @click="renderChart('year')" class="text-xs bg-gray-200 px-2 py-1 rounded">แยกตามปี</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-8">
+                    <h3 class="text-2xl font-bold mb-4 text-gray-800">งานวิจัยทั้งหมด</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div v-for="paper in researchList" :key="paper.id" class="bg-white p-4 rounded-lg shadow hover:shadow-lg transition">
+                            <h4 class="font-bold text-lg text-indigo-600 mb-2">{{ paper.title }}</h4>
+                            <p class="text-sm text-gray-600"><b>สาขา:</b> {{ paper.major }}</p>
+                            <p class="text-sm text-gray-600"><b>ปีการศึกษา:</b> {{ paper.academic_year }}</p>
+                            <div class="mt-3 flex justify-between items-center">
+                                <a :href="paper.pdf_url" target="_blank" class="text-indigo-500 text-sm hover:underline">Download PDF</a>
+                                <button @click="viewPaper(paper)" class="text-gray-500 text-sm">ดูรายละเอียด</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="currentPage === 'login'" class="max-w-md mx-auto bg-white p-8 rounded-lg shadow-lg mt-10">
+                <h2 class="text-2xl font-bold mb-6 text-center">{{ isRegister ? 'สมัครสมาชิก' : 'เข้าสู่ระบบ' }}</h2>
+                
+                <input type="email" v-model="email" placeholder="Email" class="w-full p-2 border rounded mb-4">
+                <input type="password" v-model="password" placeholder="Password" class="w-full p-2 border rounded mb-4">
+                
+                <button @click="handleAuth" class="w-full bg-indigo-600 text-white py-2 rounded hover:bg-indigo-700 mb-4">
+                    {{ isRegister ? 'สมัครสมาชิก' : 'เข้าสู่ระบบ' }}
+                </button>
+                
+                <div class="text-center text-sm">
+                    <span v-if="!isRegister">ยังไม่มีบัญชี? <a href="#" @click="isRegister = true" class="text-indigo-600">สมัครสมาชิก</a> | <a href="#" @click="resetPassword" class="text-gray-500">ลืมรหัสผ่าน?</a></span>
+                    <span v-else>มีบัญชีแล้ว? <a href="#" @click="isRegister = false" class="text-indigo-600">เข้าสู่ระบบ</a></span>
+                </div>
+            </div>
+
+            <div v-if="currentPage === 'add-research'" class="max-w-2xl mx-auto bg-white p-8 rounded-lg shadow-lg">
+                <h2 class="text-2xl font-bold mb-6 text-indigo-700">เพิ่มงานวิจัยใหม่</h2>
+                
+                <div class="space-y-4">
+                    <input v-model="form.title" placeholder="ชื่องานวิจัย" class="w-full p-2 border rounded">
+                    
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">ชื่อผู้วิจัย (สูงสุด 5 คน)</label>
+                        <div v-for="(author, index) in form.authors" :key="index" class="flex mb-2">
+                            <input v-model="form.authors[index]" placeholder="ชื่อ-นามสกุล" class="flex-1 p-2 border rounded mr-2">
+                            <button v-if="index > 0" @click="form.authors.splice(index, 1)" class="text-red-500">ลบ</button>
+                        </div>
+                        <button v-if="form.authors.length < 5" @click="form.authors.push('')" class="text-sm text-blue-500">+ เพิ่มผู้วิจัย</button>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <input v-model="form.email" placeholder="E-Mail ติดต่อ" type="email" class="w-full p-2 border rounded">
+                        <input v-model="form.year" placeholder="ปีการศึกษา (เช่น 2568)" type="number" class="w-full p-2 border rounded">
+                    </div>
+
+                    <select v-model="form.major" class="w-full p-2 border rounded">
+                        <option disabled value="">เลือกสาขาวิชา</option>
+                        <option>สาขาวิชาเทคโนโลยีธุรกิจดิจิทัล (ต่อเนื่อง)</option>
+                        <option>สาขาวิชาการบัญชี (ต่อเนื่อง)</option>
+                        <option>สาขาวิชาคอมพิวเตอร์โปรแกรมเมอร์ (ต่อเนื่อง)</option>
+                        <option>สาขาวิชาอาหารและโภชนาการ (ต่อเนื่อง)</option>
+                    </select>
+
+                    <textarea v-model="form.abstract_th" placeholder="บทคัดย่อภาษาไทย" class="w-full p-2 border rounded h-24"></textarea>
+                    <textarea v-model="form.abstract_en" placeholder="บทคัดย่อภาษาอังกฤษ" class="w-full p-2 border rounded h-24"></textarea>
+
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">ไฟล์งานวิจัยฉบับเต็ม (PDF)</label>
+                        <input type="file" @change="handleFileUpload" accept="application/pdf" class="w-full p-2 border rounded">
+                    </div>
+
+                    <div class="flex space-x-4">
+                        <button @click="submitResearch" class="flex-1 bg-green-600 text-white py-2 rounded hover:bg-green-700" :disabled="uploading">
+                            {{ uploading ? 'กำลังอัปโหลด...' : 'บันทึกข้อมูล' }}
+                        </button>
+                        <button @click="currentPage='home'" class="flex-1 bg-gray-300 text-gray-700 py-2 rounded hover:bg-gray-400">ยกเลิก</button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        const { createApp } = Vue;
+        const { createClient } = supabase;
+
+        // ** ใส่ค่า Config จาก Supabase ของคุณตรงนี้ **
+        const supabaseUrl = 'https://wnaiuceibsdwujgybzvt.supabase.co';
+        const supabaseKey = 'sb_publishable_k0NbabcmOoymTLtFL32PVA_kIbblpII';
+        const _supabase = createClient(supabaseUrl, supabaseKey);
+
+        createApp({
+            data() {
+                return {
+                    currentPage: 'home',
+                    user: null,
+                    isRegister: false,
+                    email: '',
+                    password: '',
+                    // Admin Flag (ตัวอย่างอย่างง่าย ปกติควรเช็คจาก DB)
+                    isAdmin: false, 
+                    // Data
+                    newsList: [],
+                    researchList: [],
+                    menus: [], // สำหรับ Dynamic Menu
+                    // Form
+                    form: {
+                        title: '',
+                        authors: [''],
+                        email: '',
+                        year: '',
+                        major: '',
+                        abstract_th: '',
+                        abstract_en: '',
+                        file: null
+                    },
+                    uploading: false,
+                    // News Form
+                    newNewsTitle: '',
+                    newNewsContent: '',
+                    // UI
+                    bannerUrl: 'https://via.placeholder.com/1200x400?text=Research+Banner', // แก้เป็น Link รูปจาก Drive (ต้องเป็น Direct Link)
+                    chartInstance: null
+                }
+            },
+            async mounted() {
+                // Check User
+                const { data: { session } } = await _supabase.auth.getSession();
+                this.user = session ? session.user : null;
+                
+                // Load Data
+                this.fetchNews();
+                this.fetchResearch();
+                
+                // Auth State Change
+                _supabase.auth.onAuthStateChange((_event, session) => {
+                    this.user = session ? session.user : null;
+                    if(this.user) this.currentPage = 'home';
+                });
+            },
+            methods: {
+                async handleAuth() {
+                    if (this.isRegister) {
+                        const { error } = await _supabase.auth.signUp({ email: this.email, password: this.password });
+                        if (error) alert(error.message);
+                        else alert('กรุณาตรวจสอบ Email เพื่อยืนยันตัวตน');
+                    } else {
+                        const { error } = await _supabase.auth.signInWithPassword({ email: this.email, password: this.password });
+                        if (error) alert(error.message);
+                    }
+                },
+                async logout() {
+                    await _supabase.auth.signOut();
+                    this.currentPage = 'home';
+                },
+                async resetPassword() {
+                    const { error } = await _supabase.auth.resetPasswordForEmail(this.email, {
+                        redirectTo: window.location.href,
+                    });
+                    if(error) alert(error.message);
+                    else alert('ส่งลิงก์รีเซ็ตไปที่อีเมลแล้ว');
+                },
+                handleFileUpload(event) {
+                    this.form.file = event.target.files[0];
+                },
+                async submitResearch() {
+                    if (!this.user) return alert('กรุณา Login');
+                    if (!this.form.file) return alert('กรุณาแนบไฟล์ PDF');
+                    
+                    this.uploading = true;
+                    try {
+                        // 1. Upload File
+                        const fileName = `${Date.now()}_${this.form.file.name}`;
+                        const { data, error: uploadError } = await _supabase.storage
+                            .from('research_files')
+                            .upload(fileName, this.form.file);
+                        
+                        if (uploadError) throw uploadError;
+
+                        // 2. Get Public URL
+                        const { data: { publicUrl } } = _supabase.storage
+                            .from('research_files')
+                            .getPublicUrl(fileName);
+
+                        // 3. Insert Data
+                        const { error: dbError } = await _supabase.from('research_papers').insert({
+                            title: this.form.title,
+                            authors: this.form.authors.filter(a => a.trim() !== ''),
+                            contact_email: this.form.email,
+                            academic_year: this.form.year,
+                            major: this.form.major,
+                            abstract_th: this.form.abstract_th,
+                            abstract_en: this.form.abstract_en,
+                            pdf_url: publicUrl,
+                            user_id: this.user.id
+                        });
+
+                        if (dbError) throw dbError;
+
+                        alert('บันทึกข้อมูลสำเร็จ');
+                        this.currentPage = 'home';
+                        this.fetchResearch();
+                        // Reset Form
+                        this.form = { title: '', authors: [''], email: '', year: '', major: '', abstract_th: '', abstract_en: '', file: null };
+                    } catch (e) {
+                        alert('เกิดข้อผิดพลาด: ' + e.message);
+                    } finally {
+                        this.uploading = false;
+                    }
+                },
+                async fetchNews() {
+                    const { data } = await _supabase.from('news').select('*').order('created_at', { ascending: false }).limit(10);
+                    this.newsList = data || [];
+                },
+                async postNews() {
+                    // ในความเป็นจริงควรเช็ค Role Admin ก่อน
+                    const { error } = await _supabase.from('news').insert({ title: this.newNewsTitle, content: this.newNewsContent });
+                    if(!error) {
+                        this.newNewsTitle = ''; this.newNewsContent = '';
+                        this.fetchNews();
+                    }
+                },
+                async fetchResearch() {
+                    const { data } = await _supabase.from('research_papers').select('*');
+                    this.researchList = data || [];
+                    this.$nextTick(() => this.renderChart('major'));
+                },
+                viewNews(item) {
+                    alert(`${item.title}\n\n${item.content}`);
+                },
+                viewPaper(paper) {
+                    alert(`บทคัดย่อ (TH):\n${paper.abstract_th}\n\nAbstract (EN):\n${paper.abstract_en}`);
+                },
+                renderChart(type) {
+                    const ctx = document.getElementById('researchChart');
+                    if(!ctx) return;
+                    
+                    // Prepare Data
+                    const counts = {};
+                    this.researchList.forEach(p => {
+                        const key = type === 'major' ? p.major : p.academic_year;
+                        counts[key] = (counts[key] || 0) + 1;
+                    });
+
+                    const chartData = {
+                        labels: Object.keys(counts),
+                        datasets: [{
+                            label: 'จำนวนงานวิจัย',
+                            data: Object.values(counts),
+                            backgroundColor: ['#FF6384', '#36A2EB', '#FFCE56', '#4BC0C0', '#9966FF'],
+                        }]
+                    };
+
+                    if (this.chartInstance) this.chartInstance.destroy();
+                    this.chartInstance = new Chart(ctx, {
+                        type: 'bar',
+                        data: chartData,
+                        options: { responsive: true }
+                    });
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
